@@ -1,0 +1,42 @@
+{
+  "name": "mac-sensors-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard locale per monitorare dati e sensori del Mac",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:web": "node server.js",
+    "dev": "electron .",
+    "build:app": "electron-builder --mac --dir",
+    "build:mac": "electron-builder --mac"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^38.1.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "local.mac.sensors.dashboard",
+    "productName": "Mac Sensors Dashboard",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "server.js",
+      "package.json",
+      "README.md"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dir",
+        "zip"
+      ]
+    }
+  }
+}
