@@ -143,6 +143,38 @@
       "battPct": 100,
       "rxMbps": 0.764,
       "txMbps": 0.17
+    },
+    {
+      "timestamp": "2026-03-27T00:58:55.472Z",
+      "cpuBusy": 65.7,
+      "memUsedPct": 61.24,
+      "battPct": 100,
+      "rxMbps": 0.005,
+      "txMbps": 0.005
+    },
+    {
+      "timestamp": "2026-03-27T00:59:55.577Z",
+      "cpuBusy": 42.07,
+      "memUsedPct": 61.15,
+      "battPct": 100,
+      "rxMbps": 0.006,
+      "txMbps": 0.006
+    },
+    {
+      "timestamp": "2026-03-27T01:00:57.172Z",
+      "cpuBusy": 42.96,
+      "memUsedPct": 63.1,
+      "battPct": 100,
+      "rxMbps": 0.072,
+      "txMbps": 0.234
+    },
+    {
+      "timestamp": "2026-03-27T01:01:58.363Z",
+      "cpuBusy": 43.41,
+      "memUsedPct": 59.38,
+      "battPct": 100,
+      "rxMbps": 0.004,
+      "txMbps": 0.048
     }
   ]
 }

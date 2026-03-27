@@ -53,6 +53,12 @@ Per una build macOS pacchettizzata:
 npm run build:mac
 ```
 
+## Download App
+
+Scarica l'applicazione da qui:
+
+- [Mac Sensors Dashboard.app](dist/mac-arm64/Mac%20Sensors%20Dashboard.app)
+
 ## Note
 
 - Alcuni sensori hardware avanzati su macOS non sono esposti senza strumenti aggiuntivi o privilegi elevati.
