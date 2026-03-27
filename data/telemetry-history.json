@@ -175,6 +175,14 @@
       "battPct": 100,
       "rxMbps": 0.004,
       "txMbps": 0.048
+    },
+    {
+      "timestamp": "2026-03-27T01:06:53.504Z",
+      "cpuBusy": 61.76,
+      "memUsedPct": 54.28,
+      "battPct": 100,
+      "rxMbps": 0.163,
+      "txMbps": 0.054
     }
   ]
 }
