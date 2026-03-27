@@ -263,27 +263,32 @@ function renderStorage(storageList) {
 function renderProcesses(processes) {
   const body = document.getElementById("proc-body");
   if (!body) return;
-  const rows = (Array.isArray(processes) ? processes : []).slice(0, 6);
+  const rows = (Array.isArray(processes) ? processes : []).slice(0, 8);
 
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="4" class="mono muted">Nessun dato processi</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="mono muted">Nessun dato processi</td></tr>';
     return;
   }
 
   body.innerHTML = rows
-    .map(
-      (proc) => `
+    .map((proc) => {
+      const parentLabel = proc.parentCommand ? shortCommand(proc.parentCommand) : proc.parentPid != null ? `PID ${proc.parentPid}` : "n/d";
+      const openLabel = proc.openFileCount != null ? fmtNumber(proc.openFileCount) : "n/d";
+      const socketLabel = proc.openSocketCount != null ? fmtNumber(proc.openSocketCount) : "n/d";
+      const sampleLabel = Array.isArray(proc.openSamples) && proc.openSamples.length ? shortCommand(proc.openSamples[0]) : "";
+      return `
       <tr>
         <td class="mono">${proc.pid}</td>
-        <td class="mono">${fmtPct(proc.cpuPercent)}</td>
-        <td class="mono">${fmtPct(proc.memPercent)}</td>
-        <td class="mono">${shortCommand(proc.command)}</td>
+        <td class="mono">${fmtPct(proc.cpuPercent)}<div class="cell-sub">E ${proc.energyImpact != null ? fmtNumber(proc.energyImpact) : "n/d"}</div></td>
+        <td class="mono">${fmtPct(proc.memPercent)}<div class="cell-sub">Net ${proc.netTotalBytes != null ? fmtBytes(proc.netTotalBytes) : "n/d"}</div></td>
+        <td class="mono">${proc.threadCount != null ? fmtNumber(proc.threadCount) : "n/d"}</td>
+        <td class="mono">${openLabel}<div class="cell-sub">sock ${socketLabel}</div></td>
+        <td><div class="proc-main mono">${shortCommand(proc.command)}</div><div class="cell-sub">Parent ${parentLabel}</div>${sampleLabel ? `<div class="cell-sub">Open ${sampleLabel}</div>` : ""}</td>
       </tr>
-    `
-    )
+    `;
+    })
     .join("");
 }
-
 function renderCoreGrid(perCore) {
   const el = document.getElementById("cpu-core-grid");
   if (!el) return;
@@ -300,9 +305,9 @@ function renderCoreGrid(perCore) {
       return `
         <div class="core-item">
           <div class="head">
-            <span class="muted mono">C${core.index + 1}</span>
-            <strong class="mono">${fmtPct(core.usagePercent)}</strong>
+            <span class="muted mono">Core ${core.index + 1}</span>
           </div>
+          <div class="core-value mono">${fmtPct(core.usagePercent)}</div>
           <div class="mini-track"><div class="mini-fill" style="width:${usage}%"></div></div>
         </div>
       `;
@@ -326,17 +331,38 @@ function renderPowerMetrics(powermetrics) {
   ]);
 }
 
-function renderConnections(connections) {
-  const el = document.getElementById("conn-list");
-  if (!el) return;
+function renderConnections(network) {
+  const activityEl = document.getElementById("conn-list");
+  const sampleEl = document.getElementById("conn-sample");
+  if (!activityEl) return;
 
-  const rows = Array.isArray(connections?.processes) ? connections.processes.slice(0, 5) : [];
-  if (!rows.length) {
-    el.innerHTML = '<div class="conn-item"><div class="top"><span class="muted">Nessuna connessione</span></div></div>';
+  const activityRows = Array.isArray(network?.topProcesses) ? network.topProcesses.slice(0, 5) : [];
+  if (!activityRows.length) {
+    activityEl.innerHTML = '<div class="conn-item"><div class="top"><span class="muted">Nessuna attivita rete</span></div></div>';
+  } else {
+    activityEl.innerHTML = activityRows
+      .map(
+        (row) => `
+          <div class="conn-item">
+            <div class="top">
+              <strong class="mono">${row.process || "proc"}</strong>
+              <span class="mono muted">${row.pid != null ? `PID ${row.pid}` : row.state || ""}</span>
+            </div>
+            <div class="bottom mono">RX ${fmtBytes(row.bytesIn)} · TX ${fmtBytes(row.bytesOut)} · Tot ${fmtBytes(row.totalBytes)}</div>
+          </div>
+        `
+      )
+      .join("");
+  }
+
+  if (!sampleEl) return;
+  const sampleRows = Array.isArray(network?.connections?.processes) ? network.connections.processes.slice(0, 4) : [];
+  if (!sampleRows.length) {
+    sampleEl.innerHTML = '<div class="conn-item"><div class="top"><span class="muted">Nessuna connessione attiva</span></div></div>';
     return;
   }
 
-  el.innerHTML = rows
+  sampleEl.innerHTML = sampleRows
     .map(
       (row) => `
         <div class="conn-item">
@@ -459,6 +485,136 @@ function renderServices(services) {
   );
 }
 
+function renderAlerts(alerts) {
+  const el = document.getElementById("alert-list");
+  if (!el) return;
+  const rows = Array.isArray(alerts) ? alerts : [];
+  if (!rows.length) {
+    el.innerHTML = '<span class="pill alert ok">No critical alerts</span>';
+    return;
+  }
+
+  el.innerHTML = rows
+    .map((item) => `<span class="pill alert ${item.severity || "warn"}">${item.label}: ${item.detail}</span>`)
+    .join("");
+}
+
+function renderRemoteTargets(remoteTargets) {
+  const hostEl = document.getElementById("remote-hosts");
+  const domainEl = document.getElementById("remote-domains");
+  const hosts = Array.isArray(remoteTargets?.hosts) ? remoteTargets.hosts : [];
+  const domains = Array.isArray(remoteTargets?.domains) ? remoteTargets.domains : [];
+
+  if (hostEl) {
+    hostEl.innerHTML = hosts.length
+      ? hosts
+          .map(
+            (item) => `
+              <div class="conn-item">
+                <div class="top">
+                  <strong class="mono">${item.hostname || item.host}</strong>
+                  <span class="mono muted">${fmtNumber(item.connectionCount)} conn</span>
+                </div>
+                <div class="bottom mono">${item.host}${item.sampleProcess ? ` · ${item.sampleProcess}` : ""}</div>
+              </div>
+            `
+          )
+          .join("")
+      : '<div class="conn-item"><div class="top"><span class="muted">Nessun host remoto</span></div></div>';
+  }
+
+  if (domainEl) {
+    domainEl.innerHTML = domains.length
+      ? domains.map((item) => `<span class="pill">${item.domain} · ${fmtNumber(item.connectionCount)}</span>`).join("")
+      : '<span class="pill">n/d</span>';
+  }
+}
+
+function renderPersistentHistory(historyData) {
+  const hour = Array.isArray(historyData?.windows?.hour) ? historyData.windows.hour : [];
+  const day = Array.isArray(historyData?.windows?.day) ? historyData.windows.day : [];
+  const hourCpu = hour.map((point) => Number(point.cpuBusy || 0));
+  const hourMem = hour.map((point) => Number(point.memUsedPct || 0));
+  const hourBatt = hour.map((point) => Number(point.battPct || 0));
+  const dayCpu = day.map((point) => Number(point.cpuBusy || 0));
+  const dayMem = day.map((point) => Number(point.memUsedPct || 0));
+  const dayBatt = day.map((point) => Number(point.battPct || 0));
+
+  renderTimeline("hist-1h", [hourCpu, hourMem, hourBatt], {
+    min: 0,
+    max: 100,
+    colors: ["#2d6a4f", "#2b6cb0", "#b7791f"]
+  });
+  renderTimeline("hist-24h", [dayCpu, dayMem, dayBatt], {
+    min: 0,
+    max: 100,
+    colors: ["#2d6a4f", "#2b6cb0", "#b7791f"]
+  });
+
+  const hourLast = hour[hour.length - 1];
+  const dayLast = day[day.length - 1];
+  const historyMeta = document.getElementById("history-meta");
+  const hourNow = document.getElementById("hist-1h-now");
+  const dayNow = document.getElementById("hist-24h-now");
+
+  if (historyMeta) historyMeta.textContent = `${historyData?.sampleIntervalMinutes || 1}m samples`;
+  if (hourNow) {
+    hourNow.textContent = hourLast
+      ? `CPU ${fmtPct(hourLast.cpuBusy)} · RAM ${fmtPct(hourLast.memUsedPct)} · Batt ${fmtPct(hourLast.battPct)}`
+      : "n/d";
+  }
+  if (dayNow) {
+    dayNow.textContent = dayLast
+      ? `CPU ${fmtPct(dayLast.cpuBusy)} · RAM ${fmtPct(dayLast.memUsedPct)} · Batt ${fmtPct(dayLast.battPct)}`
+      : "n/d";
+  }
+}
+
+function renderEventHistory(events) {
+  const powerEl = document.getElementById("power-event-list");
+  const crashEl = document.getElementById("crash-report-list");
+  const powerEvents = Array.isArray(events?.power) ? events.power : [];
+  const crashes = Array.isArray(events?.crashes) ? events.crashes : [];
+
+  if (powerEl) {
+    powerEl.innerHTML = powerEvents.length
+      ? powerEvents
+          .slice(0, 6)
+          .map(
+            (item) => `
+              <div class="conn-item">
+                <div class="top">
+                  <strong class="mono">${item.type}</strong>
+                  <span class="mono muted">${item.timestamp.slice(11, 19)}</span>
+                </div>
+                <div class="bottom mono">${item.detail}</div>
+              </div>
+            `
+          )
+          .join("")
+      : '<div class="conn-item"><div class="top"><span class="muted">Nessun evento power recente</span></div></div>';
+  }
+
+  if (crashEl) {
+    crashEl.innerHTML = crashes.length
+      ? crashes
+          .slice(0, 6)
+          .map(
+            (item) => `
+              <div class="conn-item">
+                <div class="top">
+                  <strong class="mono">${item.appName || item.fileName}</strong>
+                  <span class="mono muted">${String(item.timestamp).slice(11, 19)}</span>
+                </div>
+                <div class="bottom mono">${item.responsibleProc || item.fileName}${item.bugType ? ` · bug ${item.bugType}` : ""}</div>
+              </div>
+            `
+          )
+          .join("")
+      : '<div class="conn-item"><div class="top"><span class="muted">Nessun crash report recente</span></div></div>';
+  }
+}
+
 function renderThermalChip(data) {
   const chip = document.getElementById("thermal-chip");
   const notes = data?.power?.thermal?.notes || [];
@@ -481,7 +637,7 @@ function renderThermalChip(data) {
   }
 }
 
-function render(data) {
+function render(data, historyData) {
   const hostName = document.getElementById("host-name");
   const rigLine = document.getElementById("rig-line");
   const lastUpdate = document.getElementById("last-update");
@@ -540,23 +696,23 @@ function render(data) {
   document.getElementById("net-rx").textContent = fmtRate(rxBps);
   document.getElementById("net-tx").textContent = fmtRate(txBps);
 
-  renderSparkline("cpu-spark", history.cpu, { min: 0, max: 100, colors: ["#d6d9dd"] });
-  renderSparkline("mem-spark", history.mem, { min: 0, max: 100, colors: ["#aeb5be"] });
-  renderSparkline("batt-spark", history.batt, { min: 0, max: 100, colors: ["#ffc36f"] });
+  renderSparkline("cpu-spark", history.cpu, { min: 0, max: 100, colors: ["#2d6a4f"] });
+  renderSparkline("mem-spark", history.mem, { min: 0, max: 100, colors: ["#2b6cb0"] });
+  renderSparkline("batt-spark", history.batt, { min: 0, max: 100, colors: ["#b7791f"] });
 
   const netMax = Math.max(1, ...history.rxMbps, ...history.txMbps);
   renderSparkline("net-spark", [history.rxMbps, history.txMbps], {
     min: 0,
     max: netMax,
-    colors: ["#d6d9dd", "#8b939d"]
+    colors: ["#0f766e", "#b45309"]
   });
 
-  renderTimeline("tl-cpu", history.cpu, { min: 0, max: 100, colors: ["#d6d9dd"] });
-  renderTimeline("tl-mem", history.mem, { min: 0, max: 100, colors: ["#aeb5be"] });
+  renderTimeline("tl-cpu", history.cpu, { min: 0, max: 100, colors: ["#2d6a4f"] });
+  renderTimeline("tl-mem", history.mem, { min: 0, max: 100, colors: ["#2b6cb0"] });
   renderTimeline("tl-net", [history.rxMbps, history.txMbps], {
     min: 0,
     max: netMax,
-    colors: ["#d6d9dd", "#8b939d"]
+    colors: ["#0f766e", "#b45309"]
   });
 
   document.getElementById("tl-cpu-now").textContent = fmtPct(cpuBusy);
@@ -565,10 +721,14 @@ function render(data) {
 
   renderSystemQuick(data, cpuBusy, memUsedPct, rxMbps, txMbps);
   renderSensorPills(data);
+  renderAlerts(data?.alerts);
+  renderRemoteTargets(data?.network?.remoteTargets);
+  renderPersistentHistory(historyData);
+  renderEventHistory(data?.events);
   renderThermalChip(data);
   renderStorage(storageState);
   renderProcesses(data?.processes);
-  renderConnections(connections);
+  renderConnections(data?.network);
   renderCoreGrid(data?.cpu?.cores?.perCore);
   renderPowerMetrics(data?.power?.powermetrics);
   renderInventory(environment);
@@ -597,7 +757,7 @@ function render(data) {
     ["Noise", wifi.noiseDbm != null ? `${wifi.noiseDbm} dBm` : "n/d"],
     ["Rate", fmtNumber(wifi.transmitRateMbps, " Mbps")],
     ["TCP EST", fmtNumber(connections.establishedCount)],
-    ["TCP LISTEN", fmtNumber(connections.listenCount)]
+    ["Top Net Proc", data?.network?.topProcesses?.[0]?.process || "n/d"]
   ]);
 
   renderMetricRows("disk-io", [
@@ -614,10 +774,16 @@ async function fetchSnapshot() {
   return response.json();
 }
 
+async function fetchPersistentHistory() {
+  const response = await fetch("/api/history", { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
 async function update(refreshStatusEl) {
   try {
-    const data = await fetchSnapshot();
-    render(data);
+    const [data, historyData] = await Promise.all([fetchSnapshot(), fetchPersistentHistory().catch(() => null)]);
+    render(data, historyData);
     refreshStatusEl.textContent = "Auto refresh: 3s";
   } catch (error) {
     refreshStatusEl.textContent = `Errore: ${error instanceof Error ? error.message : "sconosciuto"}`;

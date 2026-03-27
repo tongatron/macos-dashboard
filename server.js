@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const os = require("os");
+const dns = require("dns").promises;
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 
@@ -11,6 +12,16 @@ const execFileAsync = promisify(execFile);
 
 const PORT = Number(process.env.PORT || 3492);
 const STATIC_DIR = path.join(__dirname, "public");
+const IS_PACKAGED_APP = Boolean(process.versions.electron && process.resourcesPath && __dirname.includes("app.asar"));
+const DATA_ROOT = process.env.MAC_DASHBOARD_DATA_DIR
+  || (IS_PACKAGED_APP ? path.join(os.homedir(), "Library", "Application Support", "Mac Sensors Dashboard") : __dirname);
+const DATA_DIR = path.join(DATA_ROOT, "data");
+const HISTORY_FILE = path.join(DATA_DIR, "telemetry-history.json");
+const HISTORY_INTERVAL_MS = 60 * 1000;
+const HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000;
+const HISTORY_LIMIT = 24 * 60 + 30;
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
 
 let previousNetSample = null;
 let previousCpuSamples = null;
@@ -30,6 +41,13 @@ let servicesCache = {
   data: null,
   promise: null
 };
+let eventsCache = {
+  timestampMs: 0,
+  data: null,
+  promise: null
+};
+const dnsReverseCache = new Map();
+let persistentHistory = loadPersistentHistory();
 
 async function runCommand(command, args = [], timeout = 4000) {
   try {
@@ -62,6 +80,56 @@ function toBoolean(value) {
 
 function formatCommandErrorSafe(value, fallback = null) {
   return value && value.length ? value : fallback;
+}
+
+function safeReadJson(filePath, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function loadPersistentHistory() {
+  const raw = safeReadJson(HISTORY_FILE, { samples: [] });
+  const samples = Array.isArray(raw?.samples)
+    ? raw.samples.filter((sample) => sample && sample.timestamp).slice(-HISTORY_LIMIT)
+    : [];
+  return { samples };
+}
+
+function persistHistoryStore() {
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(persistentHistory, null, 2));
+}
+
+function appendPersistentHistorySample(sample) {
+  if (!sample || !sample.timestamp) return;
+  const timestampMs = Date.parse(sample.timestamp);
+  if (!Number.isFinite(timestampMs)) return;
+
+  const lastSample = persistentHistory.samples[persistentHistory.samples.length - 1];
+  const lastMs = lastSample ? Date.parse(lastSample.timestamp) : 0;
+  if (lastMs && timestampMs - lastMs < HISTORY_INTERVAL_MS) return;
+
+  persistentHistory.samples.push(sample);
+  const cutoff = timestampMs - HISTORY_RETENTION_MS;
+  persistentHistory.samples = persistentHistory.samples
+    .filter((item) => Date.parse(item.timestamp) >= cutoff)
+    .slice(-HISTORY_LIMIT);
+  persistHistoryStore();
+}
+
+function buildHistoryPayload() {
+  const nowMs = Date.now();
+  const points = Array.isArray(persistentHistory.samples) ? persistentHistory.samples : [];
+  return {
+    generatedAt: new Date(nowMs).toISOString(),
+    sampleIntervalMinutes: 1,
+    windows: {
+      hour: points.filter((point) => nowMs - Date.parse(point.timestamp) <= 60 * 60 * 1000),
+      day: points.filter((point) => nowMs - Date.parse(point.timestamp) <= 24 * 60 * 60 * 1000)
+    }
+  };
 }
 
 function parseKeyValueColonText(text) {
@@ -146,8 +214,9 @@ function parsePmsetBatt(text) {
 }
 
 function parseTopCpuLine(text) {
-  const cpuLine = text.split("\n").find((line) => line.includes("CPU usage:"));
-  const loadLine = text.split("\n").find((line) => line.startsWith("Load Avg:"));
+  const lines = text.split("\n");
+  const cpuLine = [...lines].reverse().find((line) => line.includes("CPU usage:"));
+  const loadLine = [...lines].reverse().find((line) => line.startsWith("Load Avg:"));
 
   let user = null;
   let sys = null;
@@ -260,6 +329,123 @@ function parsePsTop(text, limit = 10) {
     if (out.length >= limit) break;
   }
   return out;
+}
+
+function parseTopProcessStats(text, limit = 24) {
+  const lines = String(text || "").split("\n");
+  const headerIndexes = lines
+    .map((line, index) => (/^\s*PID\s+COMMAND\s+%CPU\s+MEM\s+POWER/i.test(line) ? index : -1))
+    .filter((index) => index >= 0);
+  const headerIndex = headerIndexes.length ? headerIndexes[headerIndexes.length - 1] : -1;
+  if (headerIndex < 0) return [];
+
+  const rows = [];
+  for (const line of lines.slice(headerIndex + 1)) {
+    const match = line.match(/^\s*(\d+)\s+(.+?)\s+([0-9.]+)\s+([0-9.]+[KMGTP]?[+-]?)\s+([0-9.]+)\s*$/);
+    if (!match) continue;
+    rows.push({
+      pid: Number(match[1]),
+      commandShort: match[2].trim(),
+      cpuPercent: Number(match[3]),
+      memResident: match[4],
+      energyImpact: Number(match[5])
+    });
+    if (rows.length >= limit) break;
+  }
+  return rows;
+}
+
+function parsePsProcessDetails(text) {
+  const lines = String(text || "").split("\n").filter(Boolean);
+  if (!lines.length) return [];
+
+  const rows = [];
+  for (const line of lines) {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
+    if (!match) continue;
+    rows.push({
+      pid: Number(match[1]),
+      parentPid: Number(match[2]),
+      command: match[3].trim()
+    });
+  }
+  return rows;
+}
+
+function parseThreadCounts(text) {
+  const counts = new Map();
+  const lines = String(text || "").split("\n").filter(Boolean);
+  for (const line of lines.slice(1)) {
+    const match = line.match(/^\S*\s*(\d+)\s/);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    counts.set(pid, (counts.get(pid) || 0) + 1);
+  }
+  return counts;
+}
+
+function parseLsofOpenFiles(text) {
+  const rows = String(text || "").split("\n").slice(1).filter(Boolean);
+  const byPid = new Map();
+
+  for (const line of rows) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 9) continue;
+    const pid = Number(parts[1]);
+    if (!Number.isFinite(pid)) continue;
+    const type = parts[4] || "";
+    const name = parts.slice(8).join(" ");
+    const current = byPid.get(pid) || { openFiles: 0, openSockets: 0, samplePaths: [] };
+    current.openFiles += 1;
+    if (["IPv4", "IPv6", "unix"].includes(type)) current.openSockets += 1;
+    if (name && current.samplePaths.length < 3 && !current.samplePaths.includes(name)) {
+      current.samplePaths.push(name);
+    }
+    byPid.set(pid, current);
+  }
+
+  return byPid;
+}
+
+async function collectProcessDetails(processes) {
+  const pids = Array.from(new Set((Array.isArray(processes) ? processes : []).map((item) => item?.pid).filter((pid) => Number.isFinite(pid))));
+  if (!pids.length) return [];
+
+  const pidList = pids.join(",");
+  const [processDetailText, threadText, openFilesText] = await Promise.all([
+    runCommand("ps", ["-p", pidList, "-o", "pid=,ppid=,command="], 5000),
+    runCommand("ps", ["-M", "-p", pidList], 5000),
+    runCommand("/bin/bash", ["-lc", `lsof -nP -p ${pidList} 2>/dev/null || true`], 7000)
+  ]);
+
+  const processRows = parsePsProcessDetails(processDetailText);
+  const processByPid = new Map(processRows.map((row) => [row.pid, row]));
+  const missingParentPids = Array.from(new Set(processRows.map((row) => row.parentPid).filter((pid) => Number.isFinite(pid) && !processByPid.has(pid))));
+
+  if (missingParentPids.length) {
+    const parentText = await runCommand("ps", ["-p", missingParentPids.join(","), "-o", "pid=,ppid=,command="], 5000);
+    for (const row of parsePsProcessDetails(parentText)) {
+      processByPid.set(row.pid, row);
+    }
+  }
+
+  const threadCounts = parseThreadCounts(threadText);
+  const openFilesByPid = parseLsofOpenFiles(openFilesText);
+
+  return processes.map((proc) => {
+    const detail = processByPid.get(proc.pid);
+    const parentDetail = detail?.parentPid ? processByPid.get(detail.parentPid) : null;
+    const openInfo = openFilesByPid.get(proc.pid);
+    return {
+      ...proc,
+      parentPid: detail?.parentPid ?? null,
+      parentCommand: parentDetail?.command || null,
+      threadCount: threadCounts.get(proc.pid) ?? null,
+      openFileCount: openInfo?.openFiles ?? null,
+      openSocketCount: openInfo?.openSockets ?? null,
+      openSamples: openInfo?.samplePaths ?? []
+    };
+  });
 }
 
 function bytesFromHumanString(input) {
@@ -1041,6 +1227,288 @@ function parseListeningServices(text) {
   };
 }
 
+function parseNettopProcesses(text, limit = 8) {
+  const lines = String(text || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+
+  const rows = [];
+  for (const line of lines) {
+    if (line.startsWith(",state")) continue;
+    const parts = line.split(",");
+    if (parts.length < 4) continue;
+
+    const label = (parts[0] || "").trim();
+    const state = (parts[1] || "").trim() || null;
+    const bytesIn = toNumber(parts[2]);
+    const bytesOut = toNumber(parts[3]);
+    if (!label) continue;
+
+    const pidMatch = label.match(/\.(\d+)$/);
+    const pid = pidMatch ? Number(pidMatch[1]) : null;
+    const process = pidMatch ? label.slice(0, -pidMatch[0].length) : label;
+
+    rows.push({
+      process,
+      pid,
+      state,
+      bytesIn,
+      bytesOut,
+      totalBytes: (bytesIn || 0) + (bytesOut || 0)
+    });
+  }
+
+  return rows
+    .filter((row) => row.totalBytes > 0)
+    .sort((a, b) => b.totalBytes - a.totalBytes)
+    .slice(0, limit);
+}
+
+function extractHostFromEndpoint(endpoint) {
+  const value = String(endpoint || "").trim();
+  if (!value) return null;
+  if (value.startsWith("[")) {
+    const endIndex = value.indexOf("]");
+    return endIndex > 0 ? value.slice(1, endIndex) : value;
+  }
+  const lastColon = value.lastIndexOf(":");
+  if (lastColon < 0) return value;
+  const host = value.slice(0, lastColon);
+  return host || value;
+}
+
+function isNumericHost(host) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":");
+}
+
+function isPrivateHost(host) {
+  return /^(127\.|10\.|192\.168\.|169\.254\.|::1$|fc|fd|fe80:)/i.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+}
+
+function extractDomain(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/\.$/, "");
+  if (!host) return null;
+  if (isNumericHost(host) || host.endsWith(".local")) return host;
+  const parts = host.split(".").filter(Boolean);
+  if (parts.length <= 2) return host;
+  const secondLevel = parts[parts.length - 2];
+  const topLevel = parts[parts.length - 1];
+  if (["co", "com", "org", "net", "gov", "ac"].includes(secondLevel) && topLevel.length === 2 && parts.length >= 3) {
+    return parts.slice(-3).join(".");
+  }
+  return parts.slice(-2).join(".");
+}
+
+async function resolveHostLabel(host) {
+  const value = String(host || "").trim();
+  if (!value) return null;
+  if (!isNumericHost(value)) return value;
+
+  const cached = dnsReverseCache.get(value);
+  const nowMs = Date.now();
+  if (cached && nowMs - cached.timestampMs < 6 * 60 * 60 * 1000) {
+    return cached.hostname;
+  }
+
+  try {
+    const names = await dns.reverse(value);
+    const hostname = Array.isArray(names) && names.length ? names[0] : value;
+    dnsReverseCache.set(value, { hostname, timestampMs: nowMs });
+    return hostname;
+  } catch {
+    dnsReverseCache.set(value, { hostname: value, timestampMs: nowMs });
+    return value;
+  }
+}
+
+async function summarizeRemoteTargets(connections, limit = 6) {
+  const rows = Array.isArray(connections) ? connections : [];
+  const hostMap = new Map();
+
+  for (const row of rows) {
+    const host = extractHostFromEndpoint(row?.remoteAddress);
+    if (!host || isPrivateHost(host)) continue;
+    const key = host.toLowerCase();
+    const current = hostMap.get(key) || {
+      host,
+      connectionCount: 0,
+      processes: new Set(),
+      sampleProcess: row?.process || null
+    };
+    current.connectionCount += 1;
+    if (row?.process) current.processes.add(row.process);
+    hostMap.set(key, current);
+  }
+
+  const topHosts = [...hostMap.values()]
+    .sort((a, b) => b.connectionCount - a.connectionCount)
+    .slice(0, limit);
+
+  const resolvedHosts = await Promise.all(
+    topHosts.map(async (item) => {
+      const hostname = await resolveHostLabel(item.host);
+      return {
+        host: item.host,
+        hostname,
+        domain: extractDomain(hostname || item.host),
+        connectionCount: item.connectionCount,
+        processCount: item.processes.size,
+        sampleProcess: item.sampleProcess
+      };
+    })
+  );
+
+  const domainMap = new Map();
+  for (const item of resolvedHosts) {
+    const domain = item.domain || item.hostname || item.host;
+    const current = domainMap.get(domain) || { domain, connectionCount: 0, hosts: 0 };
+    current.connectionCount += item.connectionCount;
+    current.hosts += 1;
+    domainMap.set(domain, current);
+  }
+
+  return {
+    hosts: resolvedHosts,
+    domains: [...domainMap.values()].sort((a, b) => b.connectionCount - a.connectionCount).slice(0, limit)
+  };
+}
+
+function parsePmsetEventLog(text, limit = 12) {
+  const lines = String(text || "").split("\n").map((line) => line.trimEnd()).filter(Boolean);
+  const events = [];
+
+  for (const line of lines) {
+    const match = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+([^	]+)	?(.*)$/);
+    if (!match) continue;
+    const eventType = match[2].trim();
+    const detail = match[3].trim();
+    const normalized = eventType.toLowerCase();
+    if (!["sleep", "wake", "darkwake", "shutdowncause", "restart"].includes(normalized) && !/entering sleep|wake from|shutdown cause|restart/i.test(detail)) {
+      continue;
+    }
+    events.push({
+      timestamp: match[1],
+      type: eventType,
+      detail
+    });
+  }
+
+  return events.slice(-limit).reverse();
+}
+
+function readCrashReportsFromDir(dirPath, limit = 8) {
+  try {
+    const files = fs.readdirSync(dirPath)
+      .filter((name) => name.endsWith('.ips'))
+      .map((name) => ({
+        name,
+        fullPath: path.join(dirPath, name),
+        mtimeMs: fs.statSync(path.join(dirPath, name)).mtimeMs
+      }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .slice(0, limit);
+
+    return files.map((file) => {
+      const firstLine = (fs.readFileSync(file.fullPath, 'utf8').split('\n')[0] || '').trim();
+      let payload = {};
+      try {
+        payload = JSON.parse(firstLine);
+      } catch {
+        payload = {};
+      }
+      return {
+        fileName: file.name,
+        timestamp: payload.timestamp || new Date(file.mtimeMs).toISOString(),
+        appName: payload.app_name || payload.name || file.name,
+        incidentId: payload.incident_id || null,
+        bugType: payload.bug_type || null,
+        responsibleProc: payload.responsibleProc || payload.app_name || null
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function collectCrashReports(limit = 8) {
+  const homeDir = os.homedir();
+  const sources = [
+    path.join(homeDir, 'Library', 'Logs', 'DiagnosticReports'),
+    path.join('/Library', 'Logs', 'DiagnosticReports')
+  ];
+  const rows = sources.flatMap((dirPath) => readCrashReportsFromDir(dirPath, limit));
+  const seen = new Set();
+  return rows
+    .filter((item) => {
+      const key = `${item.fileName}:${item.timestamp}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+    .slice(0, limit);
+}
+
+async function collectEventHistory() {
+  const nowMs = Date.now();
+  if (eventsCache.data && nowMs - eventsCache.timestampMs < 120000) {
+    return eventsCache.data;
+  }
+  if (eventsCache.promise) {
+    return eventsCache.promise;
+  }
+
+  eventsCache.promise = (async () => {
+    const pmsetLogText = await runCommand('/bin/bash', [
+      '-lc',
+      "pmset -g log | rg -i '\t(Sleep|Wake|DarkWake|ShutdownCause|Restart)|Entering Sleep|Wake from|DarkWake from|DarkWake to FullWake|Shutdown cause' | tail -n 80"
+    ], 12000);
+    const data = {
+      power: parsePmsetEventLog(pmsetLogText, 12),
+      crashes: collectCrashReports(8)
+    };
+    eventsCache.data = data;
+    eventsCache.timestampMs = Date.now();
+    eventsCache.promise = null;
+    return data;
+  })().catch((error) => {
+    eventsCache.promise = null;
+    return {
+      power: [],
+      crashes: [],
+      error: error instanceof Error ? error.message : String(error)
+    };
+  });
+
+  return eventsCache.promise;
+}
+
+function computeAlerts(snapshot) {
+  const alerts = [];
+  const cpuBusy = Number(snapshot?.cpu?.usage?.userPercent || 0) + Number(snapshot?.cpu?.usage?.systemPercent || 0);
+  const memoryTotal = Number(snapshot?.memory?.totalBytes || 0);
+  const memoryUsed = Number(snapshot?.memory?.usedBytes || 0);
+  const memoryUsedPct = memoryTotal > 0 ? (memoryUsed / memoryTotal) * 100 : 0;
+  const swapUsed = Number(snapshot?.memory?.swap?.usedBytes || 0);
+  const rxMbps = Math.max(0, (Number(snapshot?.network?.rxRateBps || 0) * 8) / 1_000_000);
+  const txMbps = Math.max(0, (Number(snapshot?.network?.txRateBps || 0) * 8) / 1_000_000);
+
+  if (cpuBusy >= 90) alerts.push({ severity: "danger", label: "CPU critica", detail: `${cpuBusy.toFixed(1)}% busy` });
+  else if (cpuBusy >= 75) alerts.push({ severity: "warn", label: "CPU alta", detail: `${cpuBusy.toFixed(1)}% busy` });
+
+  if (memoryUsedPct >= 90) alerts.push({ severity: "danger", label: "RAM quasi piena", detail: `${memoryUsedPct.toFixed(1)}% in uso` });
+  else if (memoryUsedPct >= 80) alerts.push({ severity: "warn", label: "RAM alta", detail: `${memoryUsedPct.toFixed(1)}% in uso` });
+
+  if (swapUsed >= 4 * 1024 ** 3) alerts.push({ severity: "danger", label: "Swap elevato", detail: `${(swapUsed / 1024 ** 3).toFixed(1)} GB` });
+  else if (swapUsed >= 1 * 1024 ** 3) alerts.push({ severity: "warn", label: "Swap attivo", detail: `${(swapUsed / 1024 ** 3).toFixed(1)} GB` });
+
+  if (Math.max(rxMbps, txMbps) >= 500) alerts.push({ severity: "danger", label: "Traffico rete elevato", detail: `${Math.max(rxMbps, txMbps).toFixed(1)} Mbps` });
+  else if (Math.max(rxMbps, txMbps) >= 150) alerts.push({ severity: "warn", label: "Traffico rete alto", detail: `${Math.max(rxMbps, txMbps).toFixed(1)} Mbps` });
+
+  if (snapshot?.power?.thermal?.isWarning) alerts.push({ severity: "danger", label: "Thermal warning", detail: "Verifica temperature e carico" });
+
+  return alerts.slice(0, 6);
+}
+
 async function collectEnvironmentInfo() {
   const nowMs = Date.now();
   if (environmentCache.data && nowMs - environmentCache.timestampMs < 300000) {
@@ -1174,11 +1642,12 @@ async function collectSnapshot() {
     wifiText,
     routeText,
     psText,
-    netstatText,
-    lsofConnectionsText,
+    netstatText,    lsofConnectionsText,
+    nettopText,
     powermetrics,
     environmentInfo,
-    servicesInfo
+    servicesInfo,
+    eventHistory
   ] = await Promise.all([
     runCommand("sw_vers"),
     runCommand("system_profiler", ["SPHardwareDataType"], 6000),
@@ -1189,7 +1658,7 @@ async function collectSnapshot() {
     runCommand("vm_stat"),
     runCommand("memory_pressure"),
     runCommand("sysctl", ["vm.swapusage"]),
-    runCommand("top", ["-l", "1", "-n", "0"], 4000),
+    runCommand("top", ["-l", "2", "-n", "24", "-stats", "pid,command,cpu,mem,power", "-o", "cpu"], 7000),
     runCommand("df", ["-kP"]),
     runCommand("iostat", ["-Id"]),
     runCommand("system_profiler", ["SPAirPortDataType"], 6000),
@@ -1197,9 +1666,11 @@ async function collectSnapshot() {
     runCommand("ps", ["-A", "-r", "-o", "pid,%cpu,%mem,comm"]),
     runCommand("netstat", ["-an"]),
     runCommand("lsof", ["-nP", "-iTCP", "-sTCP:ESTABLISHED"]),
+    runCommand("nettop", ["-L", "1", "-x", "-J", "bytes_in,bytes_out,state", "-P", "-n"], 6000),
     collectPowermetrics(),
     collectEnvironmentInfo(),
-    collectServicesInfo()
+    collectServicesInfo(),
+    collectEventHistory()
   ]);
 
   const swVers = parseKeyValueColonText(swVersText);
@@ -1212,13 +1683,16 @@ async function collectSnapshot() {
   const memoryPressure = parseMemoryPressure(memoryPressureText);
   const swapUsage = parseSwapUsage(swapUsageText);
   const top = parseTopCpuLine(topText);
+  const topProcessStats = parseTopProcessStats(topText, 24);
   const storage = parseDf(dfText);
   const diskCounters = parseIostatDisks(iostatText);
   const primaryInterface = pickPrimaryInterface(routeText);
   const cpuCores = collectPerCoreCpuUsage();
   const wifi = parseAirportData(wifiText);
   const connectionSummary = parseNetstatConnections(netstatText);
-  const activeConnectionProcesses = parseLsofConnections(lsofConnectionsText, 8);
+  const activeConnectionProcesses = parseLsofConnections(lsofConnectionsText, 64);
+  const topNetworkProcesses = parseNettopProcesses(nettopText, 8);
+  const remoteTargets = await summarizeRemoteTargets(activeConnectionProcesses, 6);
 
   const ifconfigText = await runCommand("ifconfig", [primaryInterface]);
   const ifaceInfo = parseIfconfig(ifconfigText, primaryInterface);
@@ -1255,7 +1729,21 @@ async function collectSnapshot() {
   const batteryTempRaw = toNumber(ioregBattery.Temperature);
   const batteryTempC = batteryTempRaw === null ? null : Number(((batteryTempRaw / 10) - 273.15).toFixed(1));
 
-  const topProcesses = parsePsTop(psText, 10);
+  const powerByPid = new Map(topProcessStats.map((item) => [item.pid, item]));
+  const networkByPid = new Map(topNetworkProcesses.filter((item) => item.pid !== null).map((item) => [item.pid, item]));
+  const topProcessesBase = parsePsTop(psText, 10).map((proc) => {
+    const energy = powerByPid.get(proc.pid);
+    const network = networkByPid.get(proc.pid);
+    return {
+      ...proc,
+      energyImpact: energy?.energyImpact ?? null,
+      commandShort: energy?.commandShort ?? null,
+      netRxBytes: network?.bytesIn ?? null,
+      netTxBytes: network?.bytesOut ?? null,
+      netTotalBytes: network?.totalBytes ?? null
+    };
+  });
+  const topProcesses = await collectProcessDetails(topProcessesBase);
 
   const cycleCount = toNumber(power["Cycle Count"]) ?? toNumber(ioregBattery.CycleCount);
   const maxCapacityPercent =
@@ -1345,11 +1833,14 @@ async function collectSnapshot() {
       wifi,
       connections: {
         ...connectionSummary,
-        processes: activeConnectionProcesses
-      }
+        processes: activeConnectionProcesses.slice(0, 12)
+      },
+      topProcesses: topNetworkProcesses,
+      remoteTargets
     },
     environment: environmentInfo,
     services: servicesInfo,
+    events: eventHistory,
     processes: topProcesses,
     sensors: {
       battery: {
@@ -1367,6 +1858,16 @@ async function collectSnapshot() {
       }
     }
   };
+
+  snapshot.alerts = computeAlerts(snapshot);
+  appendPersistentHistorySample({
+    timestamp: snapshot.timestamp,
+    cpuBusy: Number((Number(snapshot.cpu.usage.userPercent || 0) + Number(snapshot.cpu.usage.systemPercent || 0)).toFixed(2)),
+    memUsedPct: snapshot.memory.totalBytes ? Number((((snapshot.memory.usedBytes || 0) / snapshot.memory.totalBytes) * 100).toFixed(2)) : 0,
+    battPct: Number(snapshot.power.battery.percent || 0),
+    rxMbps: Number((((snapshot.network.rxRateBps || 0) * 8) / 1000000).toFixed(3)),
+    txMbps: Number((((snapshot.network.txRateBps || 0) * 8) / 1000000).toFixed(3))
+  });
 
   return snapshot;
 }
@@ -1424,6 +1925,11 @@ function createAppServer() {
 
     if (requestUrl.pathname === "/api/health") {
       sendJson(res, 200, { ok: true, now: new Date().toISOString() });
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/history") {
+      sendJson(res, 200, buildHistoryPayload());
       return;
     }
 

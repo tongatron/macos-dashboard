@@ -1,0 +1,148 @@
+{
+  "samples": [
+    {
+      "timestamp": "2026-03-27T00:40:37.026Z",
+      "cpuBusy": 60.02,
+      "memUsedPct": 61.02,
+      "battPct": 100,
+      "rxMbps": 0,
+      "txMbps": 0
+    },
+    {
+      "timestamp": "2026-03-27T00:41:37.549Z",
+      "cpuBusy": 39.81,
+      "memUsedPct": 59.75,
+      "battPct": 100,
+      "rxMbps": 0.954,
+      "txMbps": 0.14
+    },
+    {
+      "timestamp": "2026-03-27T00:42:37.748Z",
+      "cpuBusy": 45.88,
+      "memUsedPct": 58.35,
+      "battPct": 100,
+      "rxMbps": 0.467,
+      "txMbps": 0.093
+    },
+    {
+      "timestamp": "2026-03-27T00:43:38.639Z",
+      "cpuBusy": 27.84,
+      "memUsedPct": 61.7,
+      "battPct": 100,
+      "rxMbps": 0.009,
+      "txMbps": 0.007
+    },
+    {
+      "timestamp": "2026-03-27T00:44:38.832Z",
+      "cpuBusy": 53.07,
+      "memUsedPct": 60.08,
+      "battPct": 100,
+      "rxMbps": 0.101,
+      "txMbps": 0.057
+    },
+    {
+      "timestamp": "2026-03-27T00:45:43.609Z",
+      "cpuBusy": 37.49,
+      "memUsedPct": 58.2,
+      "battPct": 100,
+      "rxMbps": 0.001,
+      "txMbps": 0.001
+    },
+    {
+      "timestamp": "2026-03-27T00:46:46.581Z",
+      "cpuBusy": 44.19,
+      "memUsedPct": 56.74,
+      "battPct": 100,
+      "rxMbps": 0.832,
+      "txMbps": 0.143
+    },
+    {
+      "timestamp": "2026-03-27T00:47:46.760Z",
+      "cpuBusy": 54.87,
+      "memUsedPct": 57.36,
+      "battPct": 100,
+      "rxMbps": 0.68,
+      "txMbps": 0.162
+    },
+    {
+      "timestamp": "2026-03-27T00:48:47.775Z",
+      "cpuBusy": 42.55,
+      "memUsedPct": 57.62,
+      "battPct": 100,
+      "rxMbps": 0.092,
+      "txMbps": 0.683
+    },
+    {
+      "timestamp": "2026-03-27T00:49:48.097Z",
+      "cpuBusy": 32.58,
+      "memUsedPct": 57.77,
+      "battPct": 100,
+      "rxMbps": 0.002,
+      "txMbps": 0.002
+    },
+    {
+      "timestamp": "2026-03-27T00:50:48.128Z",
+      "cpuBusy": 43.43,
+      "memUsedPct": 59.04,
+      "battPct": 100,
+      "rxMbps": 0.199,
+      "txMbps": 0.199
+    },
+    {
+      "timestamp": "2026-03-27T00:51:49.191Z",
+      "cpuBusy": 41.88,
+      "memUsedPct": 56.73,
+      "battPct": 100,
+      "rxMbps": 0.089,
+      "txMbps": 0.092
+    },
+    {
+      "timestamp": "2026-03-27T00:52:49.253Z",
+      "cpuBusy": 42.37,
+      "memUsedPct": 61.85,
+      "battPct": 100,
+      "rxMbps": 0.077,
+      "txMbps": 0.044
+    },
+    {
+      "timestamp": "2026-03-27T00:53:49.281Z",
+      "cpuBusy": 45.14,
+      "memUsedPct": 58.45,
+      "battPct": 100,
+      "rxMbps": 0.857,
+      "txMbps": 0.133
+    },
+    {
+      "timestamp": "2026-03-27T00:54:51.123Z",
+      "cpuBusy": 37.59,
+      "memUsedPct": 58.36,
+      "battPct": 100,
+      "rxMbps": 0.242,
+      "txMbps": 0.214
+    },
+    {
+      "timestamp": "2026-03-27T00:55:54.233Z",
+      "cpuBusy": 67.52,
+      "memUsedPct": 56,
+      "battPct": 100,
+      "rxMbps": 0.15,
+      "txMbps": 0.061
+    },
+    {
+      "timestamp": "2026-03-27T00:56:54.289Z",
+      "cpuBusy": 56.28,
+      "memUsedPct": 57.4,
+      "battPct": 100,
+      "rxMbps": 0.057,
+      "txMbps": 0.071
+    },
+    {
+      "timestamp": "2026-03-27T00:57:55.317Z",
+      "cpuBusy": 47.93,
+      "memUsedPct": 56.78,
+      "battPct": 100,
+      "rxMbps": 0.764,
+      "txMbps": 0.17
+    }
+  ]
+}

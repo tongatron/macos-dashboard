@@ -2,7 +2,9 @@
 
 const path = require("path");
 const { app, BrowserWindow, dialog, shell } = require("electron");
-const { startServer, stopServer } = require("../server");
+
+let startServer = null;
+let stopServer = null;
 
 let mainWindow = null;
 let serverRuntime = null;
@@ -10,6 +12,10 @@ let isQuitting = false;
 
 async function ensureServerRuntime() {
   if (serverRuntime) return serverRuntime;
+  if (!startServer || !stopServer) {
+    process.env.MAC_DASHBOARD_DATA_DIR = path.join(app.getPath("userData"), "runtime");
+    ({ startServer, stopServer } = require("../server"));
+  }
   serverRuntime = await startServer({ port: 0, host: "127.0.0.1" });
   return serverRuntime;
 }

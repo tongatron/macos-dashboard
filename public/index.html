@@ -3,189 +3,309 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mac Tech Cockpit</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
-      rel="stylesheet"
-    />
+    <title>Mac System Dashboard</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <div class="bg-grid" aria-hidden="true"></div>
-    <main class="cockpit">
-      <header class="topbar panel">
-        <div>
-          <p class="overline">Mac Tech Cockpit</p>
+    <main class="dashboard-shell">
+      <header class="app-header surface">
+        <div class="headline">
+          <p class="eyebrow">Mac System Dashboard</p>
           <h1 id="host-name">In attesa telemetria</h1>
-          <p id="rig-line" class="muted">Raccolta dati in corso</p>
+          <p id="rig-line" class="subtle">Raccolta dati in corso</p>
         </div>
-        <div class="topbar-actions">
-          <button id="refresh-btn" type="button">Refresh</button>
-          <p id="refresh-status" class="mono muted">Auto refresh: 3s</p>
-          <p id="last-update" class="mono muted">Mai</p>
+        <div class="header-meta">
+          <button id="refresh-btn" type="button">Aggiorna</button>
+          <p id="refresh-status" class="mono subtle">Auto refresh: 3s</p>
+          <p id="last-update" class="mono subtle">Mai</p>
         </div>
       </header>
 
-      <section class="kpi-grid">
-        <article class="panel kpi-card">
-          <div class="kpi-head">
-            <h2>CPU</h2>
-            <span id="cpu-meta" class="mono muted">n/d</span>
-          </div>
-          <div class="kpi-main">
-            <div class="gauge" id="cpu-gauge" style="--p:0">
-              <span id="cpu-value">--%</span>
+      <section class="hero-grid">
+        <article class="metric-card surface tone-cpu">
+          <div class="metric-topline">
+            <div>
+              <p class="metric-label">CPU</p>
+              <h2>Compute Load</h2>
             </div>
-            <svg class="spark" id="cpu-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
+            <span id="cpu-meta" class="metric-note mono subtle">n/d</span>
           </div>
-          <div id="cpu-core-grid" class="core-grid"></div>
+          <div class="metric-body">
+            <div class="gauge-wrap">
+              <div class="gauge" id="cpu-gauge" style="--p:0">
+                <span id="cpu-value">--%</span>
+              </div>
+            </div>
+            <div class="chart-stack">
+              <svg class="spark" id="cpu-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
+              <div id="cpu-core-grid" class="core-grid"></div>
+            </div>
+          </div>
         </article>
 
-        <article class="panel kpi-card">
-          <div class="kpi-head">
-            <h2>RAM</h2>
-            <span id="mem-meta" class="mono muted">n/d</span>
-          </div>
-          <div class="kpi-main">
-            <div class="gauge" id="mem-gauge" style="--p:0">
-              <span id="mem-value">--%</span>
+        <article class="metric-card surface tone-memory">
+          <div class="metric-topline">
+            <div>
+              <p class="metric-label">Memory</p>
+              <h2>Pressure & Swap</h2>
             </div>
-            <svg class="spark" id="mem-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
+            <span id="mem-meta" class="metric-note mono subtle">n/d</span>
           </div>
-          <div id="mem-extra" class="metric-stack"></div>
+          <div class="metric-body">
+            <div class="gauge-wrap">
+              <div class="gauge" id="mem-gauge" style="--p:0">
+                <span id="mem-value">--%</span>
+              </div>
+            </div>
+            <div class="chart-stack">
+              <svg class="spark" id="mem-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
+              <div id="mem-extra" class="metric-stack"></div>
+            </div>
+          </div>
         </article>
 
-        <article class="panel kpi-card">
-          <div class="kpi-head">
-            <h2>Battery</h2>
-            <span id="batt-meta" class="mono muted">n/d</span>
-          </div>
-          <div class="kpi-main">
-            <div class="gauge" id="batt-gauge" style="--p:0">
-              <span id="batt-value">--%</span>
+        <article class="metric-card surface tone-battery">
+          <div class="metric-topline">
+            <div>
+              <p class="metric-label">Battery</p>
+              <h2>Health & Charge</h2>
             </div>
-            <svg class="spark" id="batt-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
+            <span id="batt-meta" class="metric-note mono subtle">n/d</span>
           </div>
-          <div id="battery-extra" class="metric-stack"></div>
+          <div class="metric-body">
+            <div class="gauge-wrap">
+              <div class="gauge" id="batt-gauge" style="--p:0">
+                <span id="batt-value">--%</span>
+              </div>
+            </div>
+            <div class="chart-stack">
+              <svg class="spark" id="batt-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
+              <div id="battery-extra" class="metric-stack"></div>
+            </div>
+          </div>
         </article>
 
-        <article class="panel kpi-card net-card">
-          <div class="kpi-head">
-            <h2>Network</h2>
-            <span id="net-meta" class="mono muted">n/d</span>
-          </div>
-          <div class="net-main">
-            <div class="net-figures mono">
-              <p><span>RX</span><strong id="net-rx">n/d</strong></p>
-              <p><span>TX</span><strong id="net-tx">n/d</strong></p>
+        <article class="metric-card surface tone-network network-card">
+          <div class="metric-topline">
+            <div>
+              <p class="metric-label">Network</p>
+              <h2>Traffic & Wi-Fi</h2>
             </div>
-            <svg class="spark" id="net-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
+            <span id="net-meta" class="metric-note mono subtle">n/d</span>
           </div>
+          <div class="network-figures">
+            <div>
+              <span class="subtle">RX</span>
+              <strong id="net-rx" class="mono">n/d</strong>
+            </div>
+            <div>
+              <span class="subtle">TX</span>
+              <strong id="net-tx" class="mono">n/d</strong>
+            </div>
+          </div>
+          <svg class="spark" id="net-spark" viewBox="0 0 220 64" preserveAspectRatio="none"></svg>
           <div id="net-extra" class="metric-stack"></div>
         </article>
       </section>
 
-      <section class="layout-grid">
-        <article class="panel timeline-panel">
+      <section class="content-grid">
+        <article class="surface panel span-7">
           <div class="panel-head">
-            <h2>Timeline Live</h2>
-            <span class="mono muted">~3 minuti</span>
-          </div>
-
-          <div class="trace-row">
-            <div class="trace-head">
-              <span>CPU Busy</span>
-              <strong id="tl-cpu-now" class="mono">n/d</strong>
+            <div>
+              <p class="panel-label">Timeline</p>
+              <h3>Live Trends</h3>
             </div>
-            <svg id="tl-cpu" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
-          </div>
-
-          <div class="trace-row">
-            <div class="trace-head">
-              <span>RAM Used</span>
-              <strong id="tl-mem-now" class="mono">n/d</strong>
-            </div>
-            <svg id="tl-mem" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
-          </div>
-
-          <div class="trace-row">
-            <div class="trace-head">
-              <span>Net RX/TX (Mbps)</span>
-              <strong id="tl-net-now" class="mono">n/d</strong>
-            </div>
-            <svg id="tl-net" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
-          </div>
-        </article>
-
-        <article class="panel system-panel">
-          <div class="panel-head">
-            <h2>Sistema</h2>
             <span id="thermal-chip" class="chip ok">Thermal OK</span>
           </div>
-          <div id="system-quick" class="kv compact"></div>
-          <div class="section-caption mono muted">Power / Frequenze</div>
-          <div id="power-metrics" class="metric-stack"></div>
-          <div id="sensor-compact" class="pill-list"></div>
+          <div class="timeline-stack">
+            <div class="trace-row">
+              <div class="trace-head">
+                <span>CPU</span>
+                <strong id="tl-cpu-now" class="mono">n/d</strong>
+              </div>
+              <svg id="tl-cpu" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="trace-row">
+              <div class="trace-head">
+                <span>Memory</span>
+                <strong id="tl-mem-now" class="mono">n/d</strong>
+              </div>
+              <svg id="tl-mem" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="trace-row">
+              <div class="trace-head">
+                <span>Network</span>
+                <strong id="tl-net-now" class="mono">n/d</strong>
+              </div>
+              <svg id="tl-net" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
+            </div>
+          </div>
         </article>
 
-        <article class="panel storage-panel">
+        <article class="surface panel span-5">
           <div class="panel-head">
-            <h2>Storage</h2>
-            <span class="mono muted">mount principali</span>
+            <div>
+              <p class="panel-label">Overview</p>
+              <h3>Machine State</h3>
+            </div>
+          </div>
+          <div id="system-quick" class="kv compact"></div>
+          <div class="panel-subsection">
+            <p class="panel-label">Power Metrics</p>
+            <div id="power-metrics" class="metric-stack"></div>
+          </div>
+          <div class="panel-subsection">
+            <p class="panel-label">Quick Sensors</p>
+            <div id="sensor-compact" class="pill-list"></div>
+          </div>
+          <div class="panel-subsection">
+            <p class="panel-label">Alerts</p>
+            <div id="alert-list" class="pill-list"></div>
+          </div>
+        </article>
+
+        <article class="surface panel span-4">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Storage</p>
+              <h3>Volumes & I/O</h3>
+            </div>
           </div>
           <div id="storage-bars" class="storage-bars"></div>
-          <div class="section-caption mono muted">I/O live</div>
-          <div id="disk-io" class="metric-stack"></div>
+          <div class="panel-subsection">
+            <p class="panel-label">Disk I/O</p>
+            <div id="disk-io" class="metric-stack"></div>
+          </div>
         </article>
 
-        <article class="panel inventory-panel">
+        <article class="surface panel span-4">
           <div class="panel-head">
-            <h2>Hardware Inventory</h2>
-            <span class="mono muted">display / bt / audio</span>
+            <div>
+              <p class="panel-label">Hardware</p>
+              <h3>Inventory</h3>
+            </div>
           </div>
           <div id="inventory-summary" class="metric-stack"></div>
-          <div class="section-caption mono muted">USB / Thunderbolt</div>
-          <div id="peripheral-summary" class="metric-stack"></div>
-          <div class="section-caption mono muted">Periferiche</div>
+          <div class="panel-subsection">
+            <p class="panel-label">Peripherals</p>
+            <div id="peripheral-summary" class="metric-stack"></div>
+          </div>
           <div id="inventory-pills" class="pill-list"></div>
         </article>
 
-        <article class="panel security-panel">
+        <article class="surface panel span-4">
           <div class="panel-head">
-            <h2>Security & System</h2>
-            <span class="mono muted">health posture</span>
+            <div>
+              <p class="panel-label">Security</p>
+              <h3>System Posture</h3>
+            </div>
           </div>
           <div id="security-summary" class="metric-stack"></div>
-          <div class="section-caption mono muted">Sessioni</div>
           <div id="session-pills" class="pill-list"></div>
         </article>
 
-        <article class="panel software-panel">
+        <article class="surface panel span-4">
           <div class="panel-head">
-            <h2>Software Updates</h2>
-            <span class="mono muted">update posture</span>
+            <div>
+              <p class="panel-label">Software</p>
+              <h3>Updates</h3>
+            </div>
           </div>
           <div id="software-summary" class="metric-stack"></div>
-          <div class="section-caption mono muted">Storico recente</div>
           <div id="software-pills" class="pill-list"></div>
         </article>
 
-        <article class="panel services-panel">
+        <article class="surface panel span-4">
           <div class="panel-head">
-            <h2>Local Services</h2>
-            <span class="mono muted">listen sockets</span>
+            <div>
+              <p class="panel-label">Services</p>
+              <h3>Listening Endpoints</h3>
+            </div>
           </div>
           <div id="services-summary" class="metric-stack"></div>
-          <div class="section-caption mono muted">Sample</div>
           <div id="services-pills" class="pill-list"></div>
         </article>
 
-        <article class="panel process-panel">
+        <article class="surface panel span-4">
           <div class="panel-head">
-            <h2>Processi e Connessioni</h2>
-            <span class="mono muted">CPU + TCP</span>
+            <div>
+              <p class="panel-label">Connections</p>
+              <h3>Network Activity</h3>
+            </div>
+          </div>
+          <div id="conn-list" class="conn-list"></div>
+          <div class="panel-subsection">
+            <p class="panel-label">Active Connections</p>
+            <div id="conn-sample" class="conn-list"></div>
+          </div>
+        </article>
+
+        <article class="surface panel span-4">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Remote</p>
+              <h3>Hosts & Domains</h3>
+            </div>
+          </div>
+          <div class="panel-subsection">
+            <p class="panel-label">Top Hosts</p>
+            <div id="remote-hosts" class="conn-list"></div>
+          </div>
+          <div class="panel-subsection">
+            <p class="panel-label">Top Domains</p>
+            <div id="remote-domains" class="pill-list"></div>
+          </div>
+        </article>
+
+        <article class="surface panel span-8">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Stored History</p>
+              <h3>1h / 24h</h3>
+            </div>
+            <span id="history-meta" class="mono subtle">n/d</span>
+          </div>
+          <div class="timeline-stack">
+            <div class="trace-row">
+              <div class="trace-head">
+                <span>Last 1h</span>
+                <strong id="hist-1h-now" class="mono">n/d</strong>
+              </div>
+              <svg id="hist-1h" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="trace-row">
+              <div class="trace-head">
+                <span>Last 24h</span>
+                <strong id="hist-24h-now" class="mono">n/d</strong>
+              </div>
+              <svg id="hist-24h" class="timeline" viewBox="0 0 640 86" preserveAspectRatio="none"></svg>
+            </div>
+          </div>
+        </article>
+
+        <article class="surface panel span-4">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Events</p>
+              <h3>Wake / Crash History</h3>
+            </div>
+          </div>
+          <div class="panel-subsection">
+            <p class="panel-label">Power Events</p>
+            <div id="power-event-list" class="conn-list"></div>
+          </div>
+          <div class="panel-subsection">
+            <p class="panel-label">Crash Reports</p>
+            <div id="crash-report-list" class="conn-list"></div>
+          </div>
+        </article>
+
+        <article class="surface panel span-12">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Processes</p>
+              <h3>Top Processes</h3>
+            </div>
           </div>
           <div class="table-wrap">
             <table>
@@ -194,14 +314,14 @@
                   <th>PID</th>
                   <th>CPU</th>
                   <th>MEM</th>
-                  <th>Process</th>
+                  <th>Threads</th>
+                  <th>Open</th>
+                  <th>Process Tree</th>
                 </tr>
               </thead>
               <tbody id="proc-body"></tbody>
             </table>
           </div>
-          <div class="section-caption mono muted">Connessioni attive</div>
-          <div id="conn-list" class="conn-list"></div>
         </article>
       </section>
     </main>
